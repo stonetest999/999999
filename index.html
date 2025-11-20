@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gemini 貪食蛇 (通用版)</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* 改為從頂部開始排列，避免手機鍵盤遮擋 */
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #2b3a42;
+            color: white;
+            font-family: sans-serif;
+            touch-action: manipulation; /* 優化觸控反應 */
+        }
+
+        h1 {
+            margin: 10px 0;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        .score-board {
+            font-size: 20px;
+            margin-bottom: 10px;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 20px;
+            border-radius: 20px;
+        }
+
+        /* 畫布自適應設定 */
+        canvas {
+            border: 4px solid #57606f;
+            background-color: #a4b0be;
+            /* 這裡讓寬度變成響應式：最大400px，但在小螢幕上會佔滿95%寬度 */
+            width: 95vw;
+            max-width: 400px; 
+            /* 保持正方形比例 */
+            aspect-ratio: 1 / 1;
+            height: auto; 
+            
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        /* --- 手機虛擬按鍵區 --- */
+        .controls {
+            display: grid;
+            grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 60px 60px;
+            gap: 10px;
+            margin-top: 20px;
+            /* 在電腦上有鍵盤，其實可以隱藏這個，但為了通用性我們先留著 */
+        }
+
+        .btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            user-select: none; /* 防止長按選取文字 */
+            transition: background 0.1s;
+        }
+
+        .btn:active {
+            background-color: rgba(76, 175, 80, 0.5); /* 按下變綠色 */
+        }
+
+        /* 按鍵位置佈局 */
+        .btn-up { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-down { grid-column: 2; grid-row: 2; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+
+        .instructions {
+            margin-top: 15px;
+            color: #dfe4ea;
+            font-size: 12px;
+            text-align: center;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🐍 貪食蛇</h1>
+    <div class="score-board">🍎 <span id="score">0</span></div>
+    
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+
+    <div class="controls">
+        <div class="btn btn-up" id="upBtn">⬆️</div>
+        <div class="btn btn-left" id="leftBtn">⬅️</div>
+        <div class="btn btn-down" id="downBtn">⬇️</div>
+        <div class="btn btn-right" id="rightBtn">➡️</div>
+    </div>
+
+    <div class="instructions">
+        電腦：使用鍵盤方向鍵<br>
+        手機：點擊下方按鈕
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const box = 20; 
+        const canvasSize = 400; 
+
+        // 圖片資源
+        const appleImg = new Image();
+        appleImg.src = "https://img.icons8.com/color/48/apple.png"; 
+        const headImg = new Image();
+        headImg.src = "https://img.icons8.com/color/48/snake.png";
+        const bodyImg = new Image();
+        bodyImg.src = "https://img.icons8.com/color/48/filled-circle.png";
+
+        let snake = [];
+        snake[0] = { x: 9 * box, y: 10 * box };
+        
+        let food = {
+            x: Math.floor(Math.random() * (canvasSize/box)) * box,
+            y: Math.floor(Math.random() * (canvasSize/box)) * box
+        };
+
+        let score = 0;
+        const scoreElement = document.getElementById("score");
+        let d; // 方向
+
+        // --- 控制邏輯 (整合鍵盤與觸控) ---
+        
+        // 統一的方向改變函數
+        function changeDirection(newDir) {
+            if( newDir == "LEFT" && d != "RIGHT") d = "LEFT";
+            else if(newDir == "UP" && d != "DOWN") d = "UP";
+            else if(newDir == "RIGHT" && d != "LEFT") d = "RIGHT";
+            else if(newDir == "DOWN" && d != "UP") d = "DOWN";
+        }
+
+        // 1. 鍵盤監聽 (電腦用)
+        document.addEventListener("keydown", function(event){
+            let key = event.keyCode;
+            if(key == 37) changeDirection("LEFT");
+            else if(key == 38) changeDirection("UP");
+            else if(key == 39) changeDirection("RIGHT");
+            else if(key == 40) changeDirection("DOWN");
+        });
+
+        // 2. 觸控按鈕監聽 (手機用)
+        // 使用 touchstart 可以比 click 反應更快
+        document.getElementById("upBtn").addEventListener("touchstart", (e) => { e.preventDefault(); changeDirection("UP"); });
+        document.getElementById("downBtn").addEventListener("touchstart", (e) => { e.preventDefault(); changeDirection("DOWN"); });
+        document.getElementById("leftBtn").addEventListener("touchstart", (e) => { e.preventDefault(); changeDirection("LEFT"); });
+        document.getElementById("rightBtn").addEventListener("touchstart", (e) => { e.preventDefault(); changeDirection("RIGHT"); });
+        
+        // 為了相容滑鼠點擊按鈕
+        document.getElementById("upBtn").addEventListener("mousedown", () => changeDirection("UP"));
+        document.getElementById("downBtn").addEventListener("mousedown", () => changeDirection("DOWN"));
+        document.getElementById("leftBtn").addEventListener("mousedown", () => changeDirection("LEFT"));
+        document.getElementById("rightBtn").addEventListener("mousedown", () => changeDirection("RIGHT"));
+
+
+        function collision(head, array){
+            for(let i = 0; i < array.length; i++){
+                if(head.x == array[i].x && head.y == array[i].y){
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvasSize, canvasSize);
+
+            for( let i = 0; i < snake.length; i++){
+                let sX = snake[i].x;
+                let sY = snake[i].y;
+
+                if (i == 0) {
+                    if (headImg.complete && headImg.naturalHeight !== 0) {
+                        ctx.save(); 
+                        ctx.translate(sX + box/2, sY + box/2);
+                        if (d == "LEFT") ctx.rotate(Math.PI);
+                        else if (d == "UP") ctx.rotate(-Math.PI/2);
+                        else if (d == "DOWN") ctx.rotate(Math.PI/2);
+                        ctx.drawImage(headImg, -box/2, -box/2, box, box);
+                        ctx.restore(); 
+                    } else {
+                        ctx.fillStyle = "#2ed573";
+                        ctx.fillRect(sX, sY, box, box);
+                    }
+                } else {
+                    if (bodyImg.complete && bodyImg.naturalHeight !== 0) {
+                        ctx.drawImage(bodyImg, sX, sY, box, box);
+                    } else {
+                        ctx.fillStyle = "white";
+                        ctx.fillRect(sX, sY, box, box);
+                        ctx.strokeStyle = "#2b3a42";
+                        ctx.strokeRect(sX, sY, box, box);
+                    }
+                }
+            }
+
+            if (appleImg.complete && appleImg.naturalHeight !== 0) {
+                ctx.drawImage(appleImg, food.x, food.y, box, box);
+            } else {
+                ctx.fillStyle = "#ff4757";
+                ctx.fillRect(food.x, food.y, box, box);
+            }
+
+            let snakeX = snake[0].x;
+            let snakeY = snake[0].y;
+
+            if( d == "LEFT") snakeX -= box;
+            if( d == "UP") snakeY -= box;
+            if( d == "RIGHT") snakeX += box;
+            if( d == "DOWN") snakeY += box;
+
+            if(snakeX == food.x && snakeY == food.y){
+                score++;
+                scoreElement.innerText = score;
+                food = {
+                    x: Math.floor(Math.random() * (canvasSize/box)) * box,
+                    y: Math.floor(Math.random() * (canvasSize/box)) * box
+                }
+            } else {
+                snake.pop();
+            }
+
+            let newHead = { x : snakeX, y : snakeY };
+
+            if(snakeX < 0 || snakeX >= canvasSize || snakeY < 0 || snakeY >= canvasSize || collision(newHead, snake)){
+                clearInterval(game);
+                setTimeout(() => {
+                    alert("💥 遊戲結束！\n得分: " + score);
+                    location.reload(); 
+                }, 100);
+                return;
+            }
+
+            snake.unshift(newHead);
+        }
+
+        let game = setInterval(draw, 120);
+
+    </script>
+</body>
+</html>
